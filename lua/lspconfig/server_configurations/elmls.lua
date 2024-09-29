@@ -10,7 +10,7 @@ return {
     filetypes = { 'elm' },
     root_dir = function(fname)
       local filetype = api.nvim_buf_get_option(0, 'filetype')
-      if filetype == 'elm' or (filetype == 'json' and fname:match 'elm%.json$') then
+      if util.ft_matches(filetype, 'elm') or (util.ft_matches(filetype, 'json') and fname:match 'elm%.json$') then
         return elm_root_pattern(fname)
       end
     end,
