@@ -244,6 +244,10 @@ end
 function M:try_add(bufnr, project_root)
   bufnr = bufnr or api.nvim_get_current_buf()
 
+  if not api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
   if vim.bo[bufnr].buftype == 'nofile' then
     return
   end
@@ -294,6 +298,10 @@ end
 --- @param bufnr integer
 --- @param project_root? string
 function M:try_add_wrapper(bufnr, project_root)
+  if not api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
   local config = self.config
   -- `config.filetypes = nil` means all filetypes are valid.
   if not config.filetypes or vim.tbl_contains(config.filetypes, vim.bo[bufnr].filetype) then
