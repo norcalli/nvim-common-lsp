@@ -20,17 +20,19 @@ M.default_config = {
 -- global on_setup hook
 M.on_setup = nil
 
+--- @param bufname string
+--- @return boolean
 function M.bufname_valid(bufname)
-  if bufname:match '^/' or bufname:match '^[a-zA-Z]:' or bufname:match '^zipfile://' or bufname:match '^tarfile:' then
-    return true
-  end
-  return false
+  return (bufname:find '^/' or bufname:find '^%a:' or bufname:find '^zipfile://' or bufname:find '^tarfile:') ~= nil
 end
 
+--- @param bufnr integer
+--- @return integer
 function M.validate_bufnr(bufnr)
   if nvim_eleven then
     validate('bufnr', bufnr, 'number')
   end
+
   return bufnr == 0 and api.nvim_get_current_buf() or bufnr
 end
 
@@ -63,18 +65,20 @@ local opts_aliases = {
   ['description'] = 'desc',
 }
 
----@param command_definition table<string | integer, any>
+--- @param command_definition table<string | integer, any>
 function M._parse_user_command_options(command_definition)
-  ---@type table<string, string | boolean | number>
+  --- @type table<string, string | boolean | number>
   local opts = {}
+
   for k, v in pairs(command_definition) do
     if type(k) == 'string' then
       local attribute = k.gsub(k, '^%-+', '')
       opts[opts_aliases[attribute] or attribute] = v
     elseif type(k) == 'number' and type(v) == 'string' and v:match '^%-' then
-      -- Splits strings like "-nargs=* -complete=customlist,v:lua.something" into { "-nargs=*", "-complete=customlist,v:lua.something" }
+      -- Splits strings like "-nargs=* -complete=customlist,v:lua.something"
+      -- into { "-nargs=*", "-complete=customlist,v:lua.something" }.
       for _, command_attribute in ipairs(vim.split(v, '%s')) do
-        -- Splits attribute into a key-value pair, like "-nargs=*" to { "-nargs", "*" }
+        -- Splits attribute into a key-value pair, like "-nargs=*" to { "-nargs", "*" }.
         local attribute, value = unpack(vim.split(command_attribute, '=', { plain = true }))
         attribute = attribute.gsub(attribute, '^%-+', '')
         opts[opts_aliases[attribute] or attribute] = value or true
@@ -88,6 +92,7 @@ function M.create_module_commands(module_name, commands)
   for command_name, def in pairs(commands) do
     if type(def) ~= 'function' then
       local opts = M._parse_user_command_options(def)
+
       api.nvim_create_user_command(command_name, function(info)
         require('lspconfig')[module_name].commands[command_name][1](unpack(info.fargs))
       end, opts)
@@ -95,48 +100,51 @@ function M.create_module_commands(module_name, commands)
   end
 end
 
-function M.search_ancestors(startpath, func)
+--- @param startpath string
+--- @param cb fun(path: string): boolean?
+--- @return string?
+function M.search_ancestors(startpath, cb)
   if nvim_eleven then
-    validate('func', func, 'function')
+    validate('func', cb, 'function')
   end
-  if func(startpath) then
+  if cb(startpath) then
     return startpath
   end
+
   local guard = 100
   for path in vim.fs.parents(startpath) do
+    if cb(path) then
+      return path
+    end
+
     -- Prevent infinite recursion if our algorithm breaks
     guard = guard - 1
     if guard == 0 then
       return
     end
-
-    if func(path) then
-      return path
-    end
   end
 end
 
+--- @param path string
+--- @return string
 local function escape_wildcards(path)
-  return path:gsub('([%[%]%?%*])', '\\%1')
+  return (path:gsub('[%[%]%?%*]', '\\%0'))
 end
 
+--- @return fun(startpath: string): string?
 function M.root_pattern(...)
   local patterns = M.tbl_flatten { ... }
-  return function(startpath)
-    startpath = M.strip_archive_subpath(startpath)
-    for _, pattern in ipairs(patterns) do
-      local match = M.search_ancestors(startpath, function(path)
-        for _, p in ipairs(vim.fn.glob(table.concat({ escape_wildcards(path), pattern }, '/'), true, true)) do
-          if vim.loop.fs_stat(p) then
-            return path
-          end
-        end
-      end)
 
-      if match ~= nil then
-        return match
+  return function(startpath)
+    return M.search_ancestors(M.strip_archive_subpath(startpath), function(path)
+      for _, pattern in ipairs(patterns) do
+        -- NOTE: `glob()` only returns results for paths that exist.
+        -- The last `true` arg below means don't resolve/check symlink targets (e.g. allow "broken" symlinks).
+        if #vim.fn.glob(escape_wildcards(path) .. '/' .. pattern, true, true, true) > 0 then
+          return true
+        end
       end
-    end
+    end)
   end
 end
 
@@ -154,12 +162,15 @@ function M.insert_package_json(config_files, field, fname)
       end
     end
   end
+
   return config_files
 end
 
+--- @param filetype string
 function M.get_active_clients_list_by_ft(filetype)
   local clients = M.get_lsp_clients()
   local clients_list = {}
+
   for _, client in pairs(clients) do
     --- @diagnostic disable-next-line:undefined-field
     local filetypes = client.config.filetypes or {}
@@ -169,16 +180,20 @@ function M.get_active_clients_list_by_ft(filetype)
       end
     end
   end
+
   return clients_list
 end
 
+--- @param filetype string
 function M.get_other_matching_providers(filetype)
   local configs = require 'lspconfig.configs'
   local active_clients_list = M.get_active_clients_list_by_ft(filetype)
   local other_matching_configs = {}
+
   for _, config in pairs(configs) do
     if not vim.tbl_contains(active_clients_list, config.name) then
       local filetypes = config.filetypes or {}
+
       for _, ft in pairs(filetypes) do
         if ft == filetype then
           table.insert(other_matching_configs, config)
@@ -186,25 +201,30 @@ function M.get_other_matching_providers(filetype)
       end
     end
   end
+
   return other_matching_configs
 end
 
+--- @param filetype string
 function M.get_config_by_ft(filetype)
   local configs = require 'lspconfig.configs'
   local matching_configs = {}
+
   for _, config in pairs(configs) do
     local filetypes = config.filetypes or {}
+
     for _, ft in pairs(filetypes) do
       if ft == filetype then
         table.insert(matching_configs, config)
       end
     end
   end
+
   return matching_configs
 end
 
 function M.get_active_client_by_name(bufnr, servername)
-  --TODO(glepnir): remove this for loop when we want only support 0.10+
+  -- TODO(glepnir): remove this for loop when we want only support 0.10+
   for _, client in pairs(M.get_lsp_clients { bufnr = bufnr }) do
     if client.name == servername then
       return client
@@ -220,6 +240,7 @@ function M.get_managed_clients()
       vim.list_extend(clients, config.manager:clients())
     end
   end
+
   return clients
 end
 
@@ -232,61 +253,40 @@ function M.available_servers()
       table.insert(servers, server)
     end
   end
+
   return servers
 end
 
--- For zipfile: or tarfile: virtual paths, returns the path to the archive.
--- Other paths are returned unaltered.
+--- For zipfile: or tarfile: virtual paths, returns the path to the archive.
+--- Other paths are returned unaltered.
+--- @param path string
+--- @return string
 function M.strip_archive_subpath(path)
-  -- Matches regex from zip.vim / tar.vim
-  path = vim.fn.substitute(path, 'zipfile://\\(.\\{-}\\)::[^\\\\].*$', '\\1', '')
-  path = vim.fn.substitute(path, 'tarfile:\\(.\\{-}\\)::.*$', '\\1', '')
-  return path
+  -- TODO: is [^\\] necessary? is it meant to exclude a path separator (and only on windows?)?
+  return path:match('^%s*zipfile://(.-)::[^\\]') or path:match('^%s*tarfile:(.-)::') or path
 end
 
---- Public functions that can be deprecated once minimum required neovim version is high enough
-
-local function is_fs_root(path)
-  if iswin then
-    return path:match '^%a:$'
-  else
-    return path == '/'
-  end
-end
-
--- Traverse the path calling cb along the way.
-local function traverse_parents(path, cb)
-  path = vim.loop.fs_realpath(path)
-  local dir = path
-  -- Just in case our algo is buggy, don't infinite loop.
-  for _ = 1, 100 do
-    dir = vim.fs.dirname(dir)
-    if not dir then
-      return
-    end
-    -- If we can't ascend further, then stop looking.
-    if cb(dir, path) then
-      return dir, path
-    end
-    if is_fs_root(dir) then
-      break
-    end
-  end
-end
+--- Public functions that can be deprecated once minimum required neovim version is high enough.
 
 --- This can be replaced with `vim.fs.relpath` once minimum neovim version is at least 0.11.
+--- @param root string
+--- @param path string
+--- @return boolean
 function M.path.is_descendant(root, path)
+  if (path or '') == '' then
+    return false
+  elseif (root or '') == '' then
+    return false
+  end
+
+  path = vim.loop.fs_realpath(path)
   if not path then
     return false
   end
 
-  local function cb(dir, _)
+  return M.search_ancestors(path, function(dir)
     return dir == root
-  end
-
-  local dir, _ = traverse_parents(path, cb)
-
-  return dir == root
+  end) ~= nil
 end
 
 --- Helper functions that can be removed once minimum required neovim version is high enough
