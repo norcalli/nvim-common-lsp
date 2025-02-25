@@ -8,21 +8,11 @@ return {
       if not config.cmd and config.oe_jar_path then
         config.cmd = {
           'java',
-          '--add-opens=java.base/java.lang=ALL-UNNAMED',
-          '--add-opens=java.base/java.math=ALL-UNNAMED',
-          '--add-opens=java.base/java.util=ALL-UNNAMED',
-          '--add-opens=java.base/java.util.concurrent=ALL-UNNAMED',
-          '--add-opens=java.base/java.net=ALL-UNNAMED',
-          '--add-opens=java.base/java.text=ALL-UNNAMED',
         }
-        if config.debug then
-          config.cmd[#config.cmd + 1] = '-Dorg.slf4j.simpleLogger.defaultLogLevel=DEBUG'
-        end
         config.cmd[#config.cmd + 1] = '-jar'
         config.cmd[#config.cmd + 1] = config.oe_jar_path
-        if config.dlc then
-          config.cmd[#config.cmd + 1] = '--dlc'
-          config.cmd[#config.cmd + 1] = config.dlc
+        if config.debug then
+          config.cmd[#config.cmd + 1] = '--debug'
         end
         if config.trace then
           config.cmd[#config.cmd + 1] = '--trace'
@@ -34,17 +24,29 @@ return {
     description = [[
 [Language server](https://github.com/vscode-abl/vscode-abl) for Progress OpenEdge ABL.
 
-For manual installation, download abl-lsp.jar from the [VSCode
-extension](https://github.com/vscode-abl/vscode-abl/releases/latest).
+For manual installation, download abl-lsda.jar from the [VSCode extension](https://github.com/vscode-abl/vscode-abl/releases/latest).
 
 Configuration
 
 ```lua
-require('lspconfig').['openedge_ls'].setup {
-  oe_jar_path = '/path/to/abl-lsp.jar',
-  dlc = '12.2:/path/to/dlc-12.2', -- Version number and OpenEdge root directory (colon separator)
+require('lspconfig').openedge_ls.setup {
+  oe_jar_path = '/path/to/abl-lsda.jar',
   debug = false, -- Set to true for debug logging
-  trace = false -- Set to true for trace logging (REALLY verbose)
+  trace = false, -- Set to true for trace logging (REALLY verbose)
+  init_options = {
+    abl = {
+      configuration = {
+        runtimes = {
+          { name = '12.8', path = '/opt/progress/dlc' }
+        },
+        maxThreads = 1
+      },
+      completion = {
+        upperCase = false
+      },
+      buildMode = 1 -- Build all
+    }
+  }
 }
 ```
 ]],
