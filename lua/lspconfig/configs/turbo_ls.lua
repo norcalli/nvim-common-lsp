@@ -1,8 +1,10 @@
+local util = require 'lspconfig.util'
+
 return {
   default_config = {
     cmd = { 'turbo-language-server', '--stdio' },
     filetypes = { 'html', 'ruby', 'eruby', 'blade', 'php' },
-    root_dir = vim.fs.root(0, { 'Gemfile', '.git' }),
+    root_dir = util.root_pattern('Gemfile', '.git'),
   },
   docs = {
     description = [[
