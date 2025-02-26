@@ -15,6 +15,15 @@ return {
       local t = { objc = 'objective-c', objcpp = 'objective-cpp' }
       return t[ftype] or ftype
     end,
+    on_init = function(client)
+      client.server_capabilities.diagnosticProvider = {
+        interFileDependencies = true,
+        workspaceDiagnostics = false,
+      }
+    end,
+    handlers = {
+      ['textDocument/publishDiagnostics'] = function() end,
+    },
   },
   docs = {
     description = [[
